@@ -14,18 +14,21 @@ Open http://localhost:3000.
 
 ## Make the contact form deliver email
 
-The form posts to `app/api/contact/route.ts`, which sends the message over
-SMTP. Until SMTP is configured the API answers `503` and the form tells the
-visitor to email Somrat directly — nothing crashes, but nothing is delivered.
+The form posts to `app/api/contact/route.ts`, which delivers the message with
+[Resend](https://resend.com). Until it is configured the API answers `503` and
+the form tells the visitor to email Somrat directly — nothing crashes, but
+nothing is delivered either.
 
-### 1. Create a Gmail App Password
+### 1. Get a Resend API key
 
-A normal Gmail password will not work for SMTP.
+1. Sign up at https://resend.com using `somrat.info.ict@gmail.com`
+2. **API Keys → Create API Key** — sending access is enough
+3. Copy it (it starts with `re_`); it is shown once
 
-1. Go to https://myaccount.google.com/security and turn on **2-Step Verification**
-2. Go to https://myaccount.google.com/apppasswords
-3. Name it `portfolio` and click **Create**
-4. Copy the 16-character password (no spaces)
+No domain is needed. Resend's shared `onboarding@resend.dev` sender may only
+deliver to the address that owns the Resend account, which is exactly what
+this form does: visitors' messages go to Somrat's own inbox, with `Reply-To`
+set to the visitor so replying reaches them.
 
 ### 2. Write the local env file
 
@@ -33,8 +36,8 @@ A normal Gmail password will not work for SMTP.
 cp .env.example .env.local
 ```
 
-Then edit `.env.local` and paste the App Password into `SMTP_PASS`.
-`.env.local` is gitignored — never commit it.
+Paste the key into `RESEND_API_KEY`. `.env.local` is gitignored — never
+commit it.
 
 ### 3. Test
 
@@ -43,12 +46,14 @@ npm run dev
 ```
 
 Send yourself a message from the form. It should arrive at `CONTACT_TO`
-within a few seconds; check spam the first time. Replying to that email
-goes straight back to the visitor, because the API sets `Reply-To` to
-their address.
+within seconds; check spam the first time. Failures are printed in the
+terminal running `npm run dev`, not in the browser.
 
-If it fails, the reason is printed in the terminal running `npm run dev`,
-not in the browser.
+### Sending from a custom domain (optional)
+
+Once a domain is verified under **Domains** in Resend, set `RESEND_FROM` to an
+address on it — e.g. `Portfolio <hello@fazlarabbisomrat.com>` — and mail will
+come from that address instead of the shared sender.
 
 ## Deploy to Vercel
 
@@ -57,9 +62,9 @@ this and made by the Next.js team.
 
 1. Push the folder to a GitHub repository
 2. Go to https://vercel.com/new and import that repository
-3. Before clicking Deploy, open **Environment Variables** and add all five
-   keys from `.env.local` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
-   `SMTP_PASS`, `CONTACT_TO`)
+3. Before clicking Deploy, open **Environment Variables** and add
+   `RESEND_API_KEY` and `CONTACT_TO`
+   (environment variable changes need a redeploy to take effect)
 4. Deploy — it goes live at `your-project.vercel.app`
 5. Send one test message from the live site
 

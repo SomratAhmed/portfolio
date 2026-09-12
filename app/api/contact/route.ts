@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 export const runtime = "nodejs";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MAX = { name: 120, email: 200, message: 5000 };
+
+/**
+ * Resend's shared sender. It may only deliver to the address that owns the
+ * Resend account, which is exactly what this form does. Set RESEND_FROM to an
+ * address on a verified domain to send from Somrat's own domain instead.
+ */
+const DEFAULT_FROM = "Portfolio contact form <onboarding@resend.dev>";
 
 type Payload = { name?: unknown; email?: unknown; message?: unknown };
 
@@ -31,37 +38,40 @@ export async function POST(request: Request) {
     );
   }
 
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, CONTACT_TO } = process.env;
+  const { RESEND_API_KEY, RESEND_FROM, CONTACT_TO } = process.env;
 
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    // Missing configuration is an operator problem, not a visitor's — say so in
-    // the log, and give the visitor the fallback the UI already offers.
-    console.error("[contact] SMTP is not configured; see .env.example");
+  if (!RESEND_API_KEY || !CONTACT_TO) {
+    // Missing configuration is an operator problem, not a visitor's — log it,
+    // and give the visitor the fallback the form already offers.
+    console.error("[contact] RESEND_API_KEY or CONTACT_TO is unset; see .env.example");
     return NextResponse.json(
       { error: "The contact form is not configured yet." },
       { status: 503 }
     );
   }
 
-  const port = Number(SMTP_PORT ?? 465);
+  const resend = new Resend(RESEND_API_KEY);
 
-  const transport = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port,
-    secure: port === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
-
+  // Resend reports delivery failures in the response rather than by throwing,
+  // so both paths have to be handled.
   try {
-    await transport.sendMail({
-      from: `"Portfolio contact form" <${SMTP_USER}>`,
-      to: CONTACT_TO ?? SMTP_USER,
-      replyTo: `"${name}" <${email}>`,
+    const { error } = await resend.emails.send({
+      from: RESEND_FROM || DEFAULT_FROM,
+      to: [CONTACT_TO],
+      replyTo: `${name} <${email}>`,
       subject: `Portfolio message from ${name}`,
       text: `${message}\n\n—\n${name}\n${email}\n`,
     });
-  } catch (error) {
-    console.error("[contact] send failed:", error);
+
+    if (error) {
+      console.error("[contact] Resend rejected the message:", error);
+      return NextResponse.json(
+        { error: "The message could not be delivered." },
+        { status: 502 }
+      );
+    }
+  } catch (thrown) {
+    console.error("[contact] send failed:", thrown);
     return NextResponse.json(
       { error: "The message could not be delivered." },
       { status: 502 }
